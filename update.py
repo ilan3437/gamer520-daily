@@ -166,14 +166,14 @@ def fetch_games():
             seen.add(g['name'])
             unique.append(g)
 
-    # 按时间排序：最新的放前面
+    # 按时间排序：最新的放前面（小时数越小越新，所以用负数排序）
     def sort_key(g):
         t = g['time']
-        # 提取小时数，数字越小越新
+        # 提取小时数，数字越小越新，用负数实现倒序
         m = re.search(r'(\d+)', t)
         if m:
-            return int(m.group(1))
-        return 999
+            return -int(m.group(1))  # 负数，让小的排前面
+        return -999
     unique.sort(key=sort_key)
 
     return unique
@@ -594,10 +594,14 @@ def send_feishu_card(token, date_str, game_count):
 
 # ========== 主函数 ==========
 if __name__ == "__main__":
+    import sys
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     update_time = now.strftime('%H:%M')
-    send_feishu = os.environ.get("SEND_FEISHU", "false").lower() == "true"
+    
+    # 支持命令行参数 --feishu 强制推送
+    force_feishu = '--feishu' in sys.argv
+    send_feishu = force_feishu or os.environ.get("SEND_FEISHU", "false").lower() == "true"
 
     print(f"=== Gamer520 更新 ({date_str} {update_time}) ===")
 
