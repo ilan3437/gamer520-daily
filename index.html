@@ -120,13 +120,19 @@ body {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
-.game-cover {
+.game-cover-wrapper {
     width: 80px;
     height: 45px;
     border-radius: 6px;
-    object-fit: cover;
     flex-shrink: 0;
-    background: #1e1e30;
+    background: linear-gradient(135deg, #1e1e30, #2a2a3e);
+    position: relative;
+    overflow: hidden;
+}
+.game-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     cursor: zoom-in;
     transition: transform 0.2s ease;
 }
@@ -134,14 +140,25 @@ body {
     transform: scale(1.05);
 }
 .game-cover.error {
-    background: linear-gradient(135deg, #1e1e30, #2a2a3e);
+    display: none;
+}
+.game-cover-placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 24px;
 }
-.game-cover.error::after {
-    content: '🎮';
-    font-size: 20px;
+.game-cover-wrapper:not(:has(.game-cover[src])) .game-cover-placeholder,
+.game-cover-wrapper:has(.game-cover.error) .game-cover-placeholder {
+    display: flex;
+}
+.game-cover-wrapper:has(.game-cover[src]:not(.error)) .game-cover-placeholder {
+    display: none;
 }
 .game-info {
     flex: 1;
@@ -254,13 +271,42 @@ body {
 .toast.show {
     opacity: 1;
 }
+.loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(10,10,15,0.9);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 16px;
+}
+.loading-overlay.active {
+    display: flex;
+}
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+.loading-text {
+    color: var(--text);
+    font-size: 14px;
+}
 </style>
 </head>
 <body>
 <div class="header">
     <h1>🎮 Gamer520 PC游戏更新</h1>
     <div class="date">2026-05-07</div>
-    <span class="count">共 32 款</span>
+    <span class="count" id="count">共 80 款</span>
     <br>
     <button class="refresh-btn" id="refreshBtn" onclick="handleRefresh()">
         <span class="spinner"></span>
@@ -269,7 +315,7 @@ body {
 </div>
 <div class="list" id="gameList"></div>
 <div class="footer">
-    更新时间: 10:32 | <a href="https://www.gamer520.com/pcplay" target="_blank">访问原网站</a>
+    <span id="updateTime">更新时间: 13:36</span> | <a href="https://www.gamer520.com/pcplay" target="_blank">访问原网站</a>
 </div>
 
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
@@ -278,25 +324,40 @@ body {
     <div class="lightbox-title" id="lightboxTitle"></div>
 </div>
 
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">正在刷新数据...</div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
-const GAMES_DATA = [{"name": "流放者柯南 虚幻5增强版", "type": "动作/冒险", "time": "2小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/69881.html"}, {"name": "消逝的光芒2 重装上阵版", "type": "动作/冒险", "time": "2小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/39500.html"}, {"name": "僵尸部队4 死亡战争", "type": "策略/战棋", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/16248.html"}, {"name": "欧陆风云5 高级白金版", "type": "动作/冒险", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/101757.html"}, {"name": "色系战记", "type": "策略/战棋", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113102.html"}, {"name": "雾锁王国", "type": "动作/冒险", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/71359.html"}, {"name": "深岩银河 幸存者", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/72416.html"}, {"name": "哥布林维克 窃贼大亨", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112741.html"}, {"name": "星河战队 终焉虫潮", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110418.html"}, {"name": "记忆巨碑 被光遗弃", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112597.html"}, {"name": "Screamer", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110767.html"}, {"name": "刮个爽", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110977.html"}, {"name": "卡牌修仙传", "type": "卡牌/策略", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109807.html"}, {"name": "线条小狗 动物温泉", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/92868.html"}, {"name": "浣币模拟器", "type": "模拟/经营", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/92551.html"}, {"name": "怪物来袭 摇滚狂飙", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/102514.html"}, {"name": "桌面副本物语 放置好时光", "type": "视觉小说", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109993.html"}, {"name": "三国天地·逆鳞英雄", "type": "策略/战棋", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110237.html"}, {"name": "希莫里传说", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109696.html"}, {"name": "明镜江湖行 朔风起", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112619.html"}, {"name": "夺海奇航", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/96532.html"}, {"name": "菜园无双", "type": "动作/格斗", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112964.html"}, {"name": "越狱模拟器 挖洞逃生", "type": "模拟/经营", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/96750.html"}, {"name": "王国 两位君主", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/51275.html"}, {"name": "图书管理员 整理魔法图书馆吧", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112962.html"}, {"name": "弈战征途", "type": "卡牌/策略", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/107233.html"}, {"name": "人类一败涂地", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/71647.html"}, {"name": "房产达人", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/44211.html"}, {"name": "东方华心传", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/105911.html"}, {"name": "小大冒险 廷森的冒险", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/84976.html"}, {"name": "遗忘週一咖啡馆", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/95341.html"}, {"name": "曙光法师 RPG 卡牌冒险", "type": "角色扮演", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/107239.html"}];
-const UPDATE_TIME = '10:32';
+// 初始数据
+let GAMES_DATA = [{"name": "都市 天际线2", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/66665.html"}, {"name": "魔法门之英雄无敌 上古纪元", "type": "角色扮演", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/100598.html"}, {"name": "觉醒者 战斗之潮", "type": "动作/格斗", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113043.html"}, {"name": "死亡迪斯科", "type": "节奏/格斗", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113045.html"}, {"name": "废都电锯姬", "type": "动作/格斗", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113041.html"}, {"name": "幻想大陆战记 露纳希亚战记", "type": "策略/战棋", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/31113.html"}, {"name": "明末 欲火重生", "type": "角色扮演", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/102264.html"}, {"name": "污痕圣杯 阿瓦隆的陨落", "type": "动作/格斗", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/65873.html"}, {"name": "无人深空", "type": "生存/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/13570.html"}, {"name": "高能人生2", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/108743.html"}, {"name": "北境 血之誓约", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/108945.html"}, {"name": "为了吾王2", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/67181.html"}, {"name": "沙盘战争 三国", "type": "策略/战棋", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112481.html"}, {"name": "武林生存", "type": "生存/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/90033.html"}, {"name": "自在城镇", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/99513.html"}, {"name": "浣熊推币机", "type": "休闲/模拟", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/111179.html"}, {"name": "摸鱼小镇 支持者版", "type": "放置/模拟", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/101917.html"}, {"name": "狩魔之旅 支持者版", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112323.html"}, {"name": "劫后公司", "type": "生存/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/94703.html"}, {"name": "大宋英雄传", "type": "角色扮演", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/90988.html"}, {"name": "妖谈2 九尾异闻", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112455.html"}, {"name": "破晓", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/111582.html"}, {"name": "农庄牌", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112684.html"}, {"name": "深入矩阵", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/102052.html"}, {"name": "最后的加油站", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112593.html"}, {"name": "团本自走棋", "type": "策略/自走棋", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112510.html"}, {"name": "互联网创业模拟器", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112406.html"}, {"name": "华夏史诗 战国 支持者版", "type": "策略/战棋", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109979.html"}, {"name": "恶魔牌", "type": "卡牌/策略", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112615.html"}, {"name": "荒域奇谭", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112726.html"}, {"name": "王牌妖相", "type": "卡牌/策略", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113001.html"}, {"name": "继续挖矿! 世界", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/111170.html"}, {"name": "异界驿站", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113004.html"}, {"name": "无感染区 支持者版", "type": "生存/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/69323.html"}, {"name": "汽车经销商模拟器", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/97295.html"}, {"name": "火湖 SULFUR", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/84097.html"}, {"name": "HackHub 终极黑客模拟器", "type": "模拟/经营", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/105636.html"}, {"name": "非生物因素 支持者版", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/76143.html"}, {"name": "闇夜王国", "type": "动作/冒险", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/111674.html"}, {"name": "打工火柴人", "type": "休闲/模拟", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/98120.html"}, {"name": "多炮塔神教", "type": "策略/塔防", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/86200.html"}, {"name": "男娘恋爱物语", "type": "视觉小说", "time": "1天前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/95433.html"}, {"name": "流放者柯南 虚幻5增强版", "type": "动作/冒险", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/69881.html"}, {"name": "消逝的光芒2 重装上阵版", "type": "动作/冒险", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/39500.html"}, {"name": "僵尸部队4 死亡战争", "type": "策略/战棋", "time": "3小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/16248.html"}, {"name": "欧陆风云5 高级白金版", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/101757.html"}, {"name": "狼人 内心野兽", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113114.html"}, {"name": "色系战记", "type": "策略/战棋", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113102.html"}, {"name": "雾锁王国", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/71359.html"}, {"name": "遗物深渊", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/111763.html"}, {"name": "欧洲卡车模拟2", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/66421.html"}, {"name": "深岩银河 幸存者", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/72416.html"}, {"name": "哥布林维克 窃贼大亨", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112741.html"}, {"name": "星河战队 终焉虫潮", "type": "动作/冒险", "time": "4小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110418.html"}, {"name": "记忆巨碑 被光遗弃", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112597.html"}, {"name": "Screamer", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110767.html"}, {"name": "刮个爽", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110977.html"}, {"name": "卡牌修仙传", "type": "卡牌/策略", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109807.html"}, {"name": "线条小狗 动物温泉", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/92868.html"}, {"name": "重铸纪元 自由地", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/92080.html"}, {"name": "浣币模拟器", "type": "模拟/经营", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/92551.html"}, {"name": "怪物来袭 摇滚狂飙", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/102514.html"}, {"name": "Darwin’s Paradox!", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/113109.html"}, {"name": "汽车竞速计划 年度版", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/102756.html"}, {"name": "桌面副本物语 放置好时光", "type": "视觉小说", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109993.html"}, {"name": "三国天地·逆鳞英雄", "type": "策略/战棋", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/110237.html"}, {"name": "希莫里传说", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/109696.html"}, {"name": "明镜江湖行 朔风起", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112619.html"}, {"name": "夺海奇航", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/96532.html"}, {"name": "菜园无双", "type": "动作/格斗", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112964.html"}, {"name": "越狱模拟器 挖洞逃生", "type": "模拟/经营", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/96750.html"}, {"name": "王国 两位君主", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/51275.html"}, {"name": "图书管理员 整理魔法图书馆吧", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/112962.html"}, {"name": "弈战征途", "type": "卡牌/策略", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/107233.html"}, {"name": "人类一败涂地", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/71647.html"}, {"name": "房产达人", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/44211.html"}, {"name": "东方华心传", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/105911.html"}, {"name": "小大冒险 廷森的冒险", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/84976.html"}, {"name": "遗忘週一咖啡馆", "type": "动作/冒险", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/95341.html"}, {"name": "曙光法师 RPG 卡牌冒险", "type": "角色扮演", "time": "5小时前", "cover": "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "link": "https://www.gamer520.com/107239.html"}];
 const DATE_STR = '2026-05-07';
 
-function renderGames() {
+// 渲染游戏列表
+function renderGames(games = GAMES_DATA) {
     const listEl = document.getElementById('gameList');
-    if (!GAMES_DATA || GAMES_DATA.length === 0) {
+    const countEl = document.getElementById('count');
+    
+    if (!games || games.length === 0) {
         listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">今天暂无新游戏</div>';
+        countEl.textContent = '共 0 款';
         return;
     }
+    
+    countEl.textContent = `共 ${games.length} 款`;
 
-    listEl.innerHTML = GAMES_DATA.map((game, i) => `
+    listEl.innerHTML = games.map((game, i) => `
         <a class="game-card" href="${game.link}" target="_blank" style="animation-delay:${i*0.03}s">
-            <img class="game-cover" src="${game.cover}" alt="${game.name}" loading="lazy"
-                 onerror="this.classList.add('error');this.src='';"
-                 onclick="event.preventDefault();openLightbox('${game.cover}', '${game.name}')">
+            <div class="game-cover-wrapper">
+                <img class="game-cover" src="${game.cover || ''}" alt="${game.name}" loading="lazy"
+                     onerror="this.classList.add('error'); this.style.display='none';"
+                     onload="this.style.display='block';"
+                     onclick="event.preventDefault();openLightbox('${game.cover}', '${game.name}')">
+                <div class="game-cover-placeholder">🎮</div>
+            </div>
             <div class="game-info">
                 <div class="game-name">${i+1}. ${game.name}</div>
                 <div class="game-meta">
@@ -308,6 +369,7 @@ function renderGames() {
     `).join('');
 }
 
+// 打开大图
 function openLightbox(src, title) {
     if (!src) return;
     const lightbox = document.getElementById('lightbox');
@@ -319,29 +381,72 @@ function openLightbox(src, title) {
     document.body.style.overflow = 'hidden';
 }
 
+// 关闭大图
 function closeLightbox() {
     const lightbox = document.getElementById('lightbox');
     lightbox.classList.remove('active');
     document.body.style.overflow = '';
 }
 
+// 显示提示
 function showToast(msg) {
     const toast = document.getElementById('toast');
     toast.textContent = msg;
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2500);
+    setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
-function handleRefresh() {
+// 显示/隐藏加载中
+function showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (show) {
+        overlay.classList.add('active');
+    } else {
+        overlay.classList.remove('active');
+    }
+}
+
+// 刷新数据 - 从GitHub获取最新数据
+async function handleRefresh() {
     const btn = document.getElementById('refreshBtn');
     btn.classList.add('loading');
+    showLoading(true);
     
-    // 由于是静态页面，无法直接刷新数据
-    // 提示用户等待自动推送或手动刷新页面
-    setTimeout(() => {
+    try {
+        // 添加时间戳防止缓存
+        const timestamp = new Date().getTime();
+        const response = await fetch(`https://raw.githubusercontent.com/dandelion0422/gamer520-daily/main/index.html?t=${timestamp}`);
+        
+        if (!response.ok) {
+            throw new Error('获取数据失败');
+        }
+        
+        const htmlText = await response.text();
+        
+        // 从HTML中提取游戏数据
+        const dataMatch = htmlText.match(/const GAMES_DATA = (\[.*?\]);/s);
+        if (dataMatch) {
+            const newData = JSON.parse(dataMatch[1]);
+            GAMES_DATA = newData;
+            renderGames(newData);
+            
+            // 更新更新时间
+            const timeMatch = htmlText.match(/更新时间: ([\d:]+)/);
+            if (timeMatch) {
+                document.getElementById('updateTime').textContent = `更新时间: ${timeMatch[1]}`;
+            }
+            
+            showToast(`✅ 已刷新，共 ${newData.length} 款游戏`);
+        } else {
+            showToast('⚠️ 未找到数据，请稍后重试');
+        }
+    } catch (error) {
+        console.error('刷新失败:', error);
+        showToast('❌ 刷新失败，请检查网络');
+    } finally {
         btn.classList.remove('loading');
-        showToast('数据会在每天20:00自动更新，请稍后刷新页面查看');
-    }, 1000);
+        showLoading(false);
+    }
 }
 
 // 键盘支持
@@ -349,6 +454,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeLightbox();
 });
 
+// 初始化
 renderGames();
 </script>
 </body>
