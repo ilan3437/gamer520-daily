@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>Gamer520 PC娓告垙鏇存柊</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+:root {
+    --bg: #0a0a0f;
+    --card: #14141f;
+    --card-hover: #1a1a2e;
+    --border: #2a2a3e;
+    --accent: #00e68a;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px 16px;
+    max-width: 600px;
+    margin: 0 auto;
+    min-height: 100vh;
+}
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+.header h1 {
+    font-size: 22px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #00e68a, #00b8ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.header .date {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 4px;
+}
+.header .count {
+    font-size: 12px;
+    color: var(--accent);
+    background: rgba(0,230,138,0.1);
+    padding: 4px 12px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-top: 8px;
+}
+.game-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+    animation: fadeIn 0.4s ease backwards;
+}
+.game-card:active {
+    transform: scale(0.98);
+    background: var(--card-hover);
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.game-cover {
+    width: 80px;
+    height: 45px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #1e1e30;
+    cursor: zoom-in;
+    transition: transform 0.2s ease;
+}
+.game-cover:hover {
+    transform: scale(1.05);
+}
+.game-info {
+    flex: 1;
+    min-width: 0;
+}
+.game-name {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+.game-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.game-tag {
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,230,138,0.1);
+    border: 1px solid rgba(0,230,138,0.25);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+.game-time {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 8px;
+}
+
+/* 鍥剧墖鏀惧ぇ Lightbox */
+.lightbox {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.95);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+.lightbox.active {
+    display: flex;
+}
+.lightbox img {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: 8px;
+    object-fit: contain;
+}
+.lightbox-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.lightbox-title {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 14px;
+    text-align: center;
+    max-width: 90%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>Gamer520 PC娓告垙鏇存柊</h1>
+    <div class="date" id="date"></div>
+    <span class="count" id="count">鍔犺浇涓?..</span>
+</div>
+<div class="list" id="gameList">
+    <div style="text-align:center;padding:40px;color:var(--text-dim)">鍔犺浇涓?..</div>
+</div>
+<div class="footer" id="footer"></div>
+
+<!-- 鍥剧墖鏀惧ぇ灞?-->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="event.stopPropagation();closeLightbox()">&times;</button>
+    <img id="lightboxImg" src="" alt="">
+    <div class="lightbox-title" id="lightboxTitle"></div>
+</div>
+
+<script>
+// 娓告垙鏁版嵁锛堜細琚嚜鍔ㄦ浛鎹級
+const GAMES_DATA = [];
+const UPDATE_DATE = '';
+
+function renderGames() {
+    const dateEl = document.getElementById('date');
+    const countEl = document.getElementById('count');
+    const listEl = document.getElementById('gameList');
+    const footerEl = document.getElementById('footer');
+
+    if (!GAMES_DATA || GAMES_DATA.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">浠婂ぉ鏆傛棤鏂版父鎴?/div>';
+        countEl.textContent = '鍏?0 娆?;
+        dateEl.textContent = UPDATE_DATE || new Date().toLocaleDateString('zh-CN');
+        return;
+    }
+
+    dateEl.textContent = UPDATE_DATE;
+    countEl.textContent = `鍏?${GAMES_DATA.length} 娆綻;
+
+    // 鎸夋椂闂存帓搴?    const sortedGames = [...GAMES_DATA].sort((a, b) => {
+        const getHours = (t) => {
+            const m = t.match(/(\d+)/);
+            return m ? parseInt(m[1]) : 999;
+        };
+        return getHours(a.time) - getHours(b.time);
+    });
+
+    listEl.innerHTML = sortedGames.map((game, i) => `
+        <a class="game-card" href="${game.link}" target="_blank" style="animation-delay:${i*0.03}s">
+            <img class="game-cover" src="${game.cover}" alt="${game.name}" loading="lazy"
+                 onclick="event.preventDefault();openLightbox('${game.cover}', '${game.name}')">
+            <div class="game-info">
+                <div class="game-name">${i+1}. ${game.name}</div>
+                <div class="game-meta">
+                    <span class="game-tag">${game.type}</span>
+                    <span class="game-time">${game.time}</span>
+                </div>
+            </div>
+        </a>
+    `).join('');
+
+    footerEl.textContent = `鏇存柊鏃堕棿: ${new Date().toLocaleString('zh-CN', {hour: '2-digit', minute:'2-digit'})}`;
+}
+
+function openLightbox(src, title) {
+    const lightbox = document.getElementById('lightbox');
+    const img = document.getElementById('lightboxImg');
+    const titleEl = document.getElementById('lightboxTitle');
+    img.src = src;
+    titleEl.textContent = title;
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('lightbox');
+    lightbox.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// 鍒濆鍖?renderGames();
+</script>
+</body>
+</html>
