@@ -1,12 +1,13 @@
 """
 Gamer520 每日PC游戏更新 - GitHub Actions 版
-从网站抓取当天游戏 → 生成HTML → 推送到GitHub → Cloudflare Pages自动部署
+使用 Puppeteer 绕过 Cloudflare 抓取游戏数据
 """
 import requests
 import json
 import re
 import base64
 import os
+import subprocess
 from datetime import datetime
 
 # ========== 配置 ==========
@@ -14,13 +15,9 @@ SITE_URL = "https://www.gamer520.com/pcplay"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "ilan3437/gamer520-daily")
 GITHUB_API = "https://api.github.com"
-
-# 飞书配置
 FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "")
 FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 FEISHU_API = "https://open.feishu.cn/open-apis"
-
-# 网页地址
 CLOUDFLARE_URL = "https://gamer520-daily.pages.dev"
 
 # ========== 类型推断 ==========
@@ -61,16 +58,18 @@ def extract_time_from_article(article):
         return m.group(1).replace(' ', '')
     return ''
 
-def fetch_games():
-    games = []
-    
-    # 方案：使用 GitHub Actions 自带的 Chrome + Puppeteer
-    # 通过子进程调用 node 脚本获取页面内容
-    import subprocess
-    import tempfile
-    
-    # 创建 Puppeteer 脚本
-    puppeteer_script = '''
+def time_to_hours(t):
+    m = re.search(r'(\d+)小时前', t)
+    if m:
+        return int(m.group(1))
+    m = re.search(r'(\d+)天前', t)
+    if m:
+        return int(m.group(1)) * 24 + 100
+    return 999
+
+def fetch_pages_with_puppeteer():
+    """使用 Puppeteer 抓取页面内容，绕过 Cloudflare"""
+    puppeteer_script = r'''
 const puppeteer = require('puppeteer');
 (async () => {
     const browser = await puppeteer.launch({
@@ -79,14 +78,11 @@ const puppeteer = require('puppeteer');
     });
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
-    
     const urls = process.argv.slice(2);
     const results = [];
-    
     for (const url of urls) {
         try {
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-            // 等待 Cloudflare 挑战完成
             await new Promise(r => setTimeout(r, 3000));
             const html = await page.content();
             results.push(html);
@@ -94,117 +90,116 @@ const puppeteer = require('puppeteer');
             results.push('');
         }
     }
-    
     console.log('===PAGE_START===');
     for (const html of results) {
         console.log('===PAGE===');
         console.log(html);
     }
     console.log('===PAGE_END===');
-    
     await browser.close();
 })();
 '''
-    
-    # 构建URL列表
     urls = [SITE_URL] + [f"{SITE_URL}/page/{p}" for p in range(2, 6)]
-    
-    # 写入临时脚本文件
+
     script_path = '/tmp/fetch_gamer520.js'
     with open(script_path, 'w') as f:
         f.write(puppeteer_script)
-    
-    # 安装 puppeteer（如果未安装）
-    subprocess.run(['npm', 'install', 'puppeteer'], 
-                   capture_output=True, timeout=120, cwd='/tmp')
-    
-    # 执行
+
     print("使用 Puppeteer 抓取...")
     result = subprocess.run(
         ['node', script_path] + urls,
         capture_output=True, text=True, timeout=180
     )
-    
-    # 解析输出
+
+    if result.returncode != 0:
+        print(f"Puppeteer 错误: {result.stderr[:500]}")
+        return []
+
     output = result.stdout
     pages = []
     if '===PAGE_START===' in output and '===PAGE_END===' in output:
         content = output.split('===PAGE_START===')[1].split('===PAGE_END===')[0]
-        pages = content.split('===PAGE===')[1:]  # 第一个是空的
-    
+        pages = content.split('===PAGE===')[1:]
+
     print(f"获取到 {len(pages)} 页内容")
-    
+    return pages
+
+def parse_games_from_html(pages):
+    """从 HTML 页面解析游戏数据"""
+    games = []
     for page_idx, html in enumerate(pages):
         page_num = page_idx + 1
         print(f"处理第{page_num}页 (长度: {len(html)})...")
-        
+
         if len(html) < 1000:
             print(f"  内容太短，跳过")
             continue
-            
-            # 获取页面整体时间
-            all_hours = [int(t) for t in re.findall(r'(\d+)\s*小时前', html)]
-            page_time = f'{min(all_hours)}小时前' if all_hours else ''
-            
-            # 解析每个article
-            articles = re.findall(r'<article[^>]*>(.*?)</article>', html, re.DOTALL)
-            
-            for article in articles:
-                link_match = re.search(r'<a[^>]+href="(https://www\.gamer520\.com/\d+\.html)"', article)
-                if not link_match:
-                    continue
-                link = link_match.group(1)
-                
-                img_match = re.search(r'data-src="([^"]+)"', article)
-                if not img_match:
-                    img_match = re.search(r'src="([^"]+)"', article)
-                img_url = img_match.group(1) if img_match else ''
-                
-                if not any(d in img_url for d in ['imagehub', 'steamstatic', 'queniuqe', 'akamai']):
-                    continue
-                
-                name_match = re.search(r'alt="([^"]+)"', article)
-                if name_match:
-                    name = name_match.group(1).split('|')[0].strip()
-                else:
-                    name = ''
-                
-                if not name or name in [g['name'] for g in games]:
-                    continue
-                
-                article_time = extract_time_from_article(article)
-                if not article_time:
-                    article_time = page_time
-                
-                games.append({
-                    'name': name,
-                    'type': get_game_type(name),
-                    'time': article_time,
-                    'cover': get_proxy_url(img_url),
-                    'link': link
-                })
-            
-            if page_time:
-                m = re.search(r'(\d+)小时前', page_time)
-                if m and int(m.group(1)) > 24:
-                    break
-                    
-        except Exception as e:
-            print(f"  失败: {e}")
-            continue
-    
-    # 排序：最新的放前面
-    def time_to_hours(t):
-        m = re.search(r'(\d+)小时前', t)
-        if m:
-            return int(m.group(1))
-        m = re.search(r'(\d+)天前', t)
-        if m:
-            return int(m.group(1)) * 24 + 100
-        return 999
-    
+
+        all_hours = [int(t) for t in re.findall(r'(\d+)\s*小时前', html)]
+        page_time = f'{min(all_hours)}小时前' if all_hours else ''
+        print(f"  页面时间: {page_time}")
+
+        articles = re.findall(r'<article[^>]*>(.*?)</article>', html, re.DOTALL)
+        print(f"  找到 {len(articles)} 篇文章")
+
+        for article in articles:
+            link_match = re.search(r'<a[^>]+href="(https://www\.gamer520\.com/\d+\.html)"', article)
+            if not link_match:
+                continue
+            link = link_match.group(1)
+
+            img_match = re.search(r'data-src="([^"]+)"', article)
+            if not img_match:
+                img_match = re.search(r'src="([^"]+)"', article)
+            img_url = img_match.group(1) if img_match else ''
+
+            if not any(d in img_url for d in ['imagehub', 'steamstatic', 'queniuqe', 'akamai']):
+                continue
+
+            name_match = re.search(r'alt="([^"]+)"', article)
+            if name_match:
+                name = name_match.group(1).split('|')[0].strip()
+            else:
+                name = ''
+
+            if not name or name in [g['name'] for g in games]:
+                continue
+
+            article_time = extract_time_from_article(article)
+            if not article_time:
+                article_time = page_time
+
+            games.append({
+                'name': name,
+                'type': get_game_type(name),
+                'time': article_time,
+                'cover': get_proxy_url(img_url),
+                'link': link
+            })
+
+        if page_time:
+            m = re.search(r'(\d+)小时前', page_time)
+            if m and int(m.group(1)) > 24:
+                print(f"  超过24小时，停止翻页")
+                break
+
     games.sort(key=lambda g: time_to_hours(g['time']))
     return games
+
+def fetch_games():
+    """主抓取函数"""
+    pages = fetch_pages_with_puppeteer()
+    if not pages:
+        print("Puppeteer 未获取到页面，尝试 requests...")
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            resp = requests.get(SITE_URL, timeout=20, headers=headers)
+            if len(resp.text) > 1000:
+                pages = [resp.text]
+        except Exception as e:
+            print(f"requests 也失败: {e}")
+
+    return parse_games_from_html(pages)
 
 def generate_html(games, date_str, update_time):
     games_json = json.dumps(games, ensure_ascii=False)
@@ -315,7 +310,6 @@ def push_to_github(content, filename="index.html"):
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     get_resp = requests.get(url, headers=headers)
     sha = get_resp.json().get("sha") if get_resp.status_code == 200 else None
-    
     data = {
         "message": f"Update: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
@@ -323,7 +317,6 @@ def push_to_github(content, filename="index.html"):
     }
     if sha:
         data["sha"] = sha
-    
     resp = requests.put(url, headers=headers, json=data)
     return resp.status_code in [200, 201]
 
@@ -345,23 +338,23 @@ def send_feishu_card(token, date_str, game_count):
         chat_name = chat.get("name", "未知")
         card = {
             "config": {"wide_screen_mode": True},
-            "header": {"title": {"tag": "plain_text", "content": f"🎮 Gamer520 今日更新 ({date_str})"}, "template": "green"},
+            "header": {"title": {"tag": "plain_text", "content": f"\U0001f3ae Gamer520 今日更新 ({date_str})"}, "template": "green"},
             "elements": [
                 {"tag": "div", "text": {"tag": "lark_md", "content": f"**{game_count}** 款新游戏已更新"}},
-                {"tag": "action", "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "📱 查看游戏列表"}, "type": "primary", "url": CLOUDFLARE_URL}]},
+                {"tag": "action", "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "\U0001f4f1 查看游戏列表"}, "type": "primary", "url": CLOUDFLARE_URL}]},
                 {"tag": "note", "elements": [{"tag": "plain_text", "content": "每小时自动更新 | 点击封面可放大"}]}
             ]
         }
         resp = requests.post(f"{FEISHU_API}/im/v1/messages", params={"receive_id_type": "chat_id"}, headers={"Authorization": f"Bearer {token}"}, json={"receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card)})
         if resp.json().get("code") == 0:
-            print(f"✅ 飞书已发送到「{chat_name}」")
+            print(f"\u2705 飞书已发送到「{chat_name}」")
 
 if __name__ == "__main__":
     import sys
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     update_time = now.strftime('%H:%M')
-    
+
     force_feishu = '--feishu' in sys.argv
     send_feishu = force_feishu or os.environ.get("SEND_FEISHU", "false").lower() == "true"
 
