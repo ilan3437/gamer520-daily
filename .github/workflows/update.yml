@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
+    inputs:
+      send_feishu:
+        description: '是否推送飞书通知'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
   update:
@@ -17,14 +23,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
         run: pip install requests beautifulsoup4
+
+      - name: Install Puppeteer
+        run: |
+          cd /tmp
+          npm init -y
+          npm install puppeteer
 
       - name: Check if Feishu push needed
         id: check_time
         run: |
           HOUR=$(date -u +%H)
-          if [ "$HOUR" = "12" ]; then
+          if [ "$HOUR" = "11" ] || [ "$HOUR" = "12" ] || [ "$HOUR" = "13" ]; then
             echo "SEND_FEISHU=true" >> $GITHUB_OUTPUT
           else
             echo "SEND_FEISHU=false" >> $GITHUB_OUTPUT
@@ -36,5 +53,5 @@ jobs:
           GITHUB_REPO: ilan3437/gamer520-daily
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          SEND_FEISHU: ${{ steps.check_time.outputs.SEND_FEISHU }}
+          SEND_FEISHU: ${{ inputs.send_feishu || steps.check_time.outputs.SEND_FEISHU }}
         run: python update.py
