@@ -187,8 +187,18 @@ def parse_games_from_html(pages):
     return games
 
 def fetch_games():
-    """主抓取函数"""
-    pages = fetch_pages_with_puppeteer()
+    """主抓取函数：从 Puppeteer 输出的 JSON 文件读取页面"""
+    pages = []
+    pages_file = '/tmp/pages.json'
+    
+    if os.path.exists(pages_file):
+        try:
+            with open(pages_file, 'r', encoding='utf-8') as f:
+                pages = json.load(f)
+            print(f"从 {pages_file} 读取到 {len(pages)} 页内容")
+        except Exception as e:
+            print(f"读取 pages.json 失败: {e}")
+    
     if not pages:
         print("Puppeteer 未获取到页面，尝试 requests...")
         try:
